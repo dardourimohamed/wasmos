@@ -1,7 +1,11 @@
 [package]
 name = "wasmos"
 version = "0.1.0"
+description = "wasm runtime OS for web server"
+authors = ["Mohamed Dardouri <med@dardouri.com>"]
 edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/sawi-app/wasmos.git"
 
 [dependencies]
 wasmos-macro = "0.0.1"
