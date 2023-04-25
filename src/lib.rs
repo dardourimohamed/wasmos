@@ -19,7 +19,7 @@ extern "C" {
 }
 
 #[macro_export]
-macro_rules! wasmosdbg {
+macro_rules! wdbg {
     // NOTE: We cannot use `concat!` to make a static string as a format argument
     // of `eprintln!` because `file!` could contain a `{` or
     // `$val` expression could be a block (`{ .. }`), in which case the `eprintln!`
