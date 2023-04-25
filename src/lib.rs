@@ -1,35 +1,44 @@
-use std::collections::HashMap;
+pub mod gql;
+pub mod sql;
 
 pub use serde::{self, Deserialize, Serialize};
-pub use wasmos_macro::*;
-pub use tokio;
 pub use serde_json;
+pub use tokio;
+pub use wasmos_macro::*;
 
 #[no_mangle]
-pub extern "C" fn str_malloc(capacity: u64) -> *const u8 {
+extern "C" fn str_malloc(capacity: u64) -> *const u8 {
     let s = String::with_capacity(capacity as _);
     let ptr = s.as_ptr();
     std::mem::forget(s);
     ptr
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Request<T> {
-    // pub method: String,
-    pub body: T
+extern "C" {
+    pub fn wasmos_dbg(ptr: *const u8);
 }
 
-#[derive(Serialize, Deserialize)]
-pub enum ObjectFieldType {
-    String,
-    Number
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ObjectMetadata {
-    fields: HashMap<String, ObjectFieldType>
-}
-
-pub trait ObjectMeta {
-    fn metastruct() -> String;
+#[macro_export]
+macro_rules! wasmosdbg {
+    // NOTE: We cannot use `concat!` to make a static string as a format argument
+    // of `eprintln!` because `file!` could contain a `{` or
+    // `$val` expression could be a block (`{ .. }`), in which case the `eprintln!`
+    // will be malformed.
+    () => {
+        unsafe { wasmos::wasmos_dbg(format!("[{}:{}]\0", file!(), line!()).as_ptr()) }
+    };
+    ($val:expr $(,)?) => {
+        // Use of `match` here is intentional because it affects the lifetimes
+        // of temporaries - https://stackoverflow.com/a/48732525/1063961
+        match $val {
+            tmp => {
+                unsafe { wasmos::wasmos_dbg(format!("[{}:{}] {} = {:#?}\0",
+                    file!(), line!(), stringify!($val), &tmp).as_ptr()); }
+                tmp
+            }
+        }
+    };
+    ($($val:expr),+ $(,)?) => {
+        ($($crate::wasmosdbg!($val)),+,)
+    };
 }
