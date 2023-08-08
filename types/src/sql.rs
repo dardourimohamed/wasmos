@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum TableDDLOp {
@@ -12,7 +13,6 @@ pub enum TableDDLOp {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum DDLOp {
     Keep,
-    Drop,
     Rename(String),
 }
 
@@ -21,6 +21,7 @@ pub struct FieldDDL {
     pub name: String,
     pub opt: bool,
     pub ty: String,
+    pub default: Option<Value>,
     pub op: DDLOp,
 }
 

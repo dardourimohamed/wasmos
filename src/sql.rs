@@ -118,17 +118,17 @@ impl Display for FilterItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             FilterItem::Eq { col, value } => {
-                f.write_str(&format!("{} == {}", col, render_value(value)))
+                f.write_str(&format!("{} == {}", col, sql_render_value(value)))
             }
             FilterItem::Ne { col, value } => {
-                f.write_str(&format!("{} <> {}", col, render_value(value)))
+                f.write_str(&format!("{} <> {}", col, sql_render_value(value)))
             }
             FilterItem::In { col, values } => f.write_str(&format!(
                 "{} in ({})",
                 col,
                 values
                     .iter()
-                    .map(render_value)
+                    .map(sql_render_value)
                     .collect::<Vec<String>>()
                     .join(", ")
             )),
@@ -137,27 +137,27 @@ impl Display for FilterItem {
                 col,
                 values
                     .iter()
-                    .map(render_value)
+                    .map(sql_render_value)
                     .collect::<Vec<String>>()
                     .join(", ")
             )),
             FilterItem::Gt { col, value } => {
-                f.write_str(&format!("{} > {}", col, render_value(value)))
+                f.write_str(&format!("{} > {}", col, sql_render_value(value)))
             }
             FilterItem::Gte { col, value } => {
-                f.write_str(&format!("{} >= {}", col, render_value(value)))
+                f.write_str(&format!("{} >= {}", col, sql_render_value(value)))
             }
             FilterItem::Lt { col, value } => {
-                f.write_str(&format!("{} < {}", col, render_value(value)))
+                f.write_str(&format!("{} < {}", col, sql_render_value(value)))
             }
             FilterItem::Lte { col, value } => {
-                f.write_str(&format!("{} <= {}", col, render_value(value)))
+                f.write_str(&format!("{} <= {}", col, sql_render_value(value)))
             }
             FilterItem::Between { col, start, end } => f.write_str(&format!(
                 "{} between ({}, {})",
                 col,
-                render_value(start),
-                render_value(end)
+                sql_render_value(start),
+                sql_render_value(end)
             )),
             FilterItem::Like { col, expr } => f.write_str(&format!("{} like {}", col, expr)),
             FilterItem::IsNull { col } => f.write_str(&format!("{} IS NULL", col)),
@@ -165,23 +165,24 @@ impl Display for FilterItem {
         }
     }
 }
-fn render_value(value: &Value) -> String {
+
+pub fn sql_render_value(value: &Value) -> String {
     match value {
         Value::Null => "NULL".into(),
         Value::Bool(b) => format!("{}", b),
         Value::Number(n) => format!("{}", n),
-        Value::String(s) => format!("'{}'", s.replace('\'', "\\'")),
+        Value::String(s) => format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'")),
         Value::Array(a) => format!(
             "( {} )",
             a.into_iter()
-                .map(render_value)
+                .map(sql_render_value)
                 .collect::<Vec<String>>()
                 .join(", ")
         ),
         Value::Object(obj) => format!(
             "( {} )",
             obj.into_iter()
-                .map(|o| format!("{} AS {}", render_value(o.1), o.0))
+                .map(|o| format!("{} AS {}", sql_render_value(o.1), o.0))
                 .collect::<Vec<String>>()
                 .join(", ")
         ),
