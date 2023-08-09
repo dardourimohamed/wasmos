@@ -6,6 +6,8 @@ use serde_json::Value;
 extern "C" {
     fn ext_sql_exec(ptr: *const u8) -> *const u8;
     fn ext_sql_query(ptr: *const u8) -> *const u8;
+    fn ext_custom_sql_exec(ptr: *const u8) -> *const u8;
+    fn ext_custom_sql_query(ptr: *const u8) -> *const u8;
 }
 
 #[derive(Serialize)]
@@ -25,7 +27,7 @@ struct SqlRes {
     data: Option<Value>,
 }
 
-pub async fn sql_exec(cmd: Value) -> Result<Value, String> {
+pub async fn sql_exec(cmd: Value) -> Result<i64, String> {
     tokio::task::spawn(async move {
         let req_ptr = format!("{}\0", serde_json::to_string(&cmd).unwrap()).as_ptr();
         let res_ptr = unsafe { ext_sql_exec(req_ptr) };
@@ -36,7 +38,7 @@ pub async fn sql_exec(cmd: Value) -> Result<Value, String> {
         };
         let res = serde_json::from_str::<SqlRes>(&res_str).unwrap();
         if res.ok {
-            Ok(res.data.unwrap())
+            Ok(res.data.unwrap().as_i64().unwrap())
         } else {
             Err(res.msg.unwrap())
         }
@@ -56,6 +58,45 @@ pub async fn sql_query(cmd: Value) -> Result<Value, String> {
         let res = serde_json::from_str::<SqlRes>(&res_str).unwrap();
         if res.ok {
             Ok(res.data.unwrap())
+        } else {
+            Err(res.msg.unwrap())
+        }
+    })
+    .await
+    .unwrap()
+}
+
+pub async fn custom_sql_exec(sql: String) -> Result<i64, String> {
+    tokio::task::spawn(async move {
+        let req_ptr = format!("{}\0", sql).as_ptr();
+        let res_ptr = unsafe { ext_custom_sql_exec(req_ptr) };
+        let res_str = unsafe {
+            std::ffi::CString::from_raw(res_ptr as _)
+                .into_string()
+                .unwrap()
+        };
+        let res = serde_json::from_str::<SqlRes>(&res_str).unwrap();
+        if res.ok {
+            Ok(res.data.unwrap().as_i64().unwrap())
+        } else {
+            Err(res.msg.unwrap())
+        }
+    })
+    .await
+    .unwrap()
+}
+pub async fn custom_sql_query(sql: String) -> Result<Vec<Vec<Value>>, String> {
+    tokio::task::spawn(async move {
+        let req_ptr = format!("{}\0", sql).as_ptr();
+        let res_ptr = unsafe { ext_custom_sql_query(req_ptr) };
+        let res_str = unsafe {
+            std::ffi::CString::from_raw(res_ptr as _)
+                .into_string()
+                .unwrap()
+        };
+        let res = serde_json::from_str::<SqlRes>(&res_str).unwrap();
+        if res.ok {
+            Ok(serde_json::from_value::<Vec<Vec<Value>>>(res.data.unwrap()).unwrap())
         } else {
             Err(res.msg.unwrap())
         }
