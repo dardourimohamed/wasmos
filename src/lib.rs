@@ -4,7 +4,7 @@ pub mod sql;
 pub use serde::{self, Deserialize, Serialize};
 pub use serde_json;
 pub use tokio;
-pub use wasmos_macro::*;
+pub use riwaq_macro::*;
 
 #[no_mangle]
 extern "C" fn str_malloc(capacity: u64) -> *const u8 {
@@ -15,7 +15,7 @@ extern "C" fn str_malloc(capacity: u64) -> *const u8 {
 }
 
 extern "C" {
-    pub fn wasmos_dbg(ptr: *const u8);
+    pub fn riwaq_dbg(ptr: *const u8);
 }
 
 #[macro_export]
@@ -25,20 +25,20 @@ macro_rules! wdbg {
     // `$val` expression could be a block (`{ .. }`), in which case the `eprintln!`
     // will be malformed.
     () => {
-        unsafe { wasmos::wasmos_dbg(format!("[{}:{}]\0", file!(), line!()).as_ptr()) }
+        unsafe { riwaq::riwaq_dbg(format!("[{}:{}]\0", file!(), line!()).as_ptr()) }
     };
     ($val:expr $(,)?) => {
         // Use of `match` here is intentional because it affects the lifetimes
         // of temporaries - https://stackoverflow.com/a/48732525/1063961
         match $val {
             tmp => {
-                unsafe { wasmos::wasmos_dbg(format!("[{}:{}] {} = {:#?}\0",
+                unsafe { riwaq::riwaq_dbg(format!("[{}:{}] {} = {:#?}\0",
                     file!(), line!(), stringify!($val), &tmp).as_ptr()); }
                 tmp
             }
         }
     };
     ($($val:expr),+ $(,)?) => {
-        ($($crate::wasmosdbg!($val)),+,)
+        ($($crate::riwaqdbg!($val)),+,)
     };
 }
