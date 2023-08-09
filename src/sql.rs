@@ -325,6 +325,7 @@ where
     Select(Select<T>),
     Insert(Insert),
     Update(Update<T>),
+    Delete(Delete<T>),
 }
 
 impl<T> Display for SQLRequest<T>
@@ -336,6 +337,7 @@ where
             SQLRequest::Select(req) => req.fmt(f),
             SQLRequest::Insert(req) => req.fmt(f),
             SQLRequest::Update(req) => req.fmt(f),
+            SQLRequest::Delete(req) => req.fmt(f),
         }
     }
 }
@@ -490,5 +492,31 @@ where
             .unwrap_or("".to_string());
 
         f.write_str(&format!("UPDATE {tbl} SET {values}{filter};"))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Delete<T>
+where
+    T: SQLFilterTrait,
+{
+    pub op: Option<String>,
+    pub tbl: String,
+    pub filter: Option<FilterStmt<T>>,
+}
+
+impl<T> Display for Delete<T>
+where
+    T: SQLFilterTrait,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let tbl = self.tbl.clone();
+        let filter = self
+            .filter
+            .as_ref()
+            .map(|filter| format!(" WHERE {}", filter))
+            .unwrap_or("".to_string());
+
+        f.write_str(&format!("DELETE FROM {tbl}{filter};"))
     }
 }
