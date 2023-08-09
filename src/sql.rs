@@ -323,6 +323,7 @@ where
     T: SQLFilterTrait,
 {
     Select(Select<T>),
+    Insert(Insert),
     Update(Update<T>),
 }
 
@@ -333,6 +334,7 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SQLRequest::Select(req) => req.fmt(f),
+            SQLRequest::Insert(req) => req.fmt(f),
             SQLRequest::Update(req) => req.fmt(f),
         }
     }
@@ -423,6 +425,38 @@ where
             .unwrap_or("".to_string());
 
         f.write_str(&format!("SELECT {cols} FROM {tbl} {filter};"))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Insert {
+    pub op: Option<String>,
+    pub tbl: String,
+    pub values: serde_json::Value,
+}
+
+impl Display for Insert {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let tbl = self.tbl.clone();
+
+        let keys = self
+            .values
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|s| s.to_owned())
+            .collect::<Vec<String>>()
+            .join(", ");
+        let values = self
+            .values
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|v| format!("{value}", value = sql_render_value(v)))
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        f.write_str(&format!("INSERT INTO {tbl} ({keys}) VALUES ({values});"))
     }
 }
 
