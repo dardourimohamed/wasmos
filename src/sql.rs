@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -118,7 +118,7 @@ impl Display for FilterItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             FilterItem::Eq { col, value } => {
-                f.write_str(&format!("{} == {}", col, sql_render_value(value)))
+                f.write_str(&format!("{} = {}", col, sql_render_value(value)))
             }
             FilterItem::Ne { col, value } => {
                 f.write_str(&format!("{} <> {}", col, sql_render_value(value)))
@@ -202,6 +202,92 @@ where
     Or(Vec<FilterStmt<T>>),
     Filter(T),
 }
+impl<T> FilterStmt<T>
+where
+    T: SQLFilterTrait,
+{
+    pub fn and(self, filter: T) -> Self {
+        let mut m = self;
+        m = match m {
+            FilterStmt::And(mut f) => {
+                f.push(FilterStmt::Filter(filter));
+                FilterStmt::And(f)
+            }
+            FilterStmt::Or(f) => {
+                FilterStmt::And(vec![FilterStmt::Or(f), FilterStmt::Filter(filter)])
+            }
+            FilterStmt::Filter(f) => {
+                FilterStmt::And(vec![FilterStmt::Filter(f), FilterStmt::Filter(filter)])
+            }
+        };
+        m
+    }
+    pub fn and_all<VEC>(self, filter: VEC) -> Self
+    where
+        VEC: IntoIterator<Item = T>,
+    {
+        let mut m = self;
+        m = match m {
+            FilterStmt::And(mut f) => {
+                f.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
+                FilterStmt::And(f)
+            }
+            FilterStmt::Or(f) => {
+                let mut res = vec![FilterStmt::Or(f)];
+                res.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
+                FilterStmt::And(res)
+            }
+            FilterStmt::Filter(f) => {
+                let mut res = vec![FilterStmt::Filter(f)];
+                res.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
+                FilterStmt::And(res)
+            }
+        };
+        m
+    }
+    pub fn or(self, filter: T) -> Self {
+        let mut m = self;
+        m = match m {
+            FilterStmt::Or(mut f) => {
+                f.push(FilterStmt::Filter(filter));
+                FilterStmt::Or(f)
+            }
+            FilterStmt::And(f) => {
+                FilterStmt::Or(vec![FilterStmt::And(f), FilterStmt::Filter(filter)])
+            }
+            FilterStmt::Filter(f) => {
+                FilterStmt::Or(vec![FilterStmt::Filter(f), FilterStmt::Filter(filter)])
+            }
+        };
+        m
+    }
+
+    pub fn or_any<VEC>(self, filter: VEC) -> Self
+    where
+        VEC: IntoIterator<Item = T>,
+    {
+        let mut m = self;
+        m = match m {
+            FilterStmt::Or(mut f) => {
+                f.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
+                FilterStmt::Or(f)
+            }
+            FilterStmt::And(f) => {
+                let mut res = vec![FilterStmt::And(f)];
+                res.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
+                FilterStmt::Or(res)
+            }
+            FilterStmt::Filter(f) => {
+                let mut res = vec![FilterStmt::Filter(f)];
+                res.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
+                FilterStmt::Or(res)
+            }
+        };
+        m
+    }
+
+    pub async fn exec(self) {}
+}
 
 impl<T> Display for FilterStmt<T>
 where
@@ -231,11 +317,33 @@ where
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "op")]
+pub enum SQLRequest<T>
+where
+    T: SQLFilterTrait,
+{
+    Select(Select<T>),
+    Update(Update<T>),
+}
+
+impl<T> Display for SQLRequest<T>
+where
+    T: SQLFilterTrait,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SQLRequest::Select(req) => req.fmt(f),
+            SQLRequest::Update(req) => req.fmt(f),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Select<T>
 where
     T: SQLFilterTrait,
 {
-    pub op: String,
+    pub op: Option<String>,
     pub tbl: String,
     pub cols: Vec<String>,
     pub filter: Option<FilterStmt<T>>,
@@ -245,104 +353,60 @@ where
     T: SQLFilterTrait,
 {
     pub fn and(self, filter: T) -> Self {
-        let mut m = self;
-        m.filter = match m.filter {
-            Some(FilterStmt::And(mut f)) => {
-                f.push(FilterStmt::Filter(filter));
-                Some(FilterStmt::And(f))
-            }
-            Some(FilterStmt::Or(f)) => Some(FilterStmt::And(vec![
-                FilterStmt::Or(f),
-                FilterStmt::Filter(filter),
-            ])),
-            Some(FilterStmt::Filter(f)) => Some(FilterStmt::And(vec![
-                FilterStmt::Filter(f),
-                FilterStmt::Filter(filter),
-            ])),
-            None => Some(FilterStmt::Filter(filter)),
-        };
-        m
+        Self {
+            filter: Some(match self.filter {
+                Some(ex_filter) => ex_filter.and(filter),
+                _ => FilterStmt::Filter(filter),
+            }),
+            ..self
+        }
     }
     pub fn and_all<VEC>(self, filter: VEC) -> Self
     where
         VEC: IntoIterator<Item = T>,
     {
-        let mut m = self;
-        m.filter = match m.filter {
-            Some(FilterStmt::And(mut f)) => {
-                f.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
-                Some(FilterStmt::And(f))
-            }
-            Some(FilterStmt::Or(f)) => {
-                let mut res = vec![FilterStmt::Or(f)];
-                res.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
-                Some(FilterStmt::And(res))
-            }
-            Some(FilterStmt::Filter(f)) => {
-                let mut res = vec![FilterStmt::Filter(f)];
-                res.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
-                Some(FilterStmt::And(res))
-            }
-            None => Some(FilterStmt::And(
-                filter
-                    .into_iter()
-                    .map(|item| FilterStmt::Filter(item))
-                    .collect(),
-            )),
-        };
-        m
+        Self {
+            filter: Some(match self.filter {
+                Some(ex_filter) => ex_filter.and_all::<VEC>(filter),
+                _ => FilterStmt::And(
+                    filter
+                        .into_iter()
+                        .map(|item| FilterStmt::Filter(item))
+                        .collect(),
+                ),
+            }),
+            ..self
+        }
+    }
+    pub fn where_(self, filter: T) -> Self {
+        self.and(filter)
     }
     pub fn or(self, filter: T) -> Self {
-        let mut m = self;
-        m.filter = match m.filter {
-            Some(FilterStmt::Or(mut f)) => {
-                f.push(FilterStmt::Filter(filter));
-                Some(FilterStmt::Or(f))
-            }
-            Some(FilterStmt::And(f)) => Some(FilterStmt::Or(vec![
-                FilterStmt::And(f),
-                FilterStmt::Filter(filter),
-            ])),
-            Some(FilterStmt::Filter(f)) => Some(FilterStmt::Or(vec![
-                FilterStmt::Filter(f),
-                FilterStmt::Filter(filter),
-            ])),
-            None => Some(FilterStmt::Filter(filter)),
-        };
-        m
+        Self {
+            filter: Some(match self.filter {
+                Some(ex_filter) => ex_filter.or(filter),
+                _ => FilterStmt::Filter(filter),
+            }),
+            ..self
+        }
     }
-
     pub fn or_any<VEC>(self, filter: VEC) -> Self
     where
         VEC: IntoIterator<Item = T>,
     {
-        let mut m = self;
-        m.filter = match m.filter {
-            Some(FilterStmt::Or(mut f)) => {
-                f.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
-                Some(FilterStmt::Or(f))
-            }
-            Some(FilterStmt::And(f)) => {
-                let mut res = vec![FilterStmt::And(f)];
-                res.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
-                Some(FilterStmt::Or(res))
-            }
-            Some(FilterStmt::Filter(f)) => {
-                let mut res = vec![FilterStmt::Filter(f)];
-                res.extend(filter.into_iter().map(|item| FilterStmt::Filter(item)));
-                Some(FilterStmt::Or(res))
-            }
-            None => Some(FilterStmt::Or(
-                filter
-                    .into_iter()
-                    .map(|item| FilterStmt::Filter(item))
-                    .collect(),
-            )),
-        };
-        m
+        Self {
+            filter: Some(match self.filter {
+                Some(ex_filter) => ex_filter.or_any::<VEC>(filter),
+                _ => FilterStmt::Or(
+                    filter
+                        .into_iter()
+                        .map(|item| FilterStmt::Filter(item))
+                        .collect(),
+                ),
+            }),
+            ..self
+        }
     }
-
-    pub async fn exec(self) {}
 }
 
 impl<T> Display for Select<T>
@@ -359,5 +423,38 @@ where
             .unwrap_or("".to_string());
 
         f.write_str(&format!("SELECT {cols} FROM {tbl} {filter};"))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Update<T>
+where
+    T: SQLFilterTrait,
+{
+    pub op: Option<String>,
+    pub tbl: String,
+    pub values: HashMap<String, serde_json::Value>,
+    pub filter: Option<FilterStmt<T>>,
+}
+
+impl<T> Display for Update<T>
+where
+    T: SQLFilterTrait,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let tbl = self.tbl.clone();
+        let values = self
+            .values
+            .iter()
+            .map(|(k, v)| format!("{k} = {value}", value = sql_render_value(v)))
+            .collect::<Vec<String>>()
+            .join(", ");
+        let filter = self
+            .filter
+            .as_ref()
+            .map(|filter| format!(" WHERE {}", filter))
+            .unwrap_or("".to_string());
+
+        f.write_str(&format!("UPDATE {tbl} SET {values}{filter};"))
     }
 }
