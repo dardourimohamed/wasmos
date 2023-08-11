@@ -10,12 +10,6 @@ extern "C" {
     fn ext_custom_sql_query(ptr: *const u8) -> *const u8;
 }
 
-#[derive(Serialize)]
-pub struct DBConn {
-    pub url: String,
-    pub db_name: String,
-}
-
 pub trait Col {
     fn sql_name(&self) -> String;
 }
