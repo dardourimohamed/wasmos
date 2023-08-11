@@ -7,12 +7,6 @@ edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/mahd-dev/riwaq.git"
 
-[workspace]
-members = [
-    ".",
-    "types",
-]
-
 [dependencies]
 riwaq-macro = "0.1.0"
 tokio = { version = "1", features = ["rt"] }
